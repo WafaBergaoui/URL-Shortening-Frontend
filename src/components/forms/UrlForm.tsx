@@ -7,31 +7,23 @@ import { startLoading, setShortUrl, setError } from "@/redux/urlSlice";
 import { RootState, AppDispatch } from "@/redux/store";
 import { Link } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
-
-// Helper function to validate URL
-const isValidUrl = (url: string): boolean => {
-  const urlPattern = new RegExp(
-    "^(https?:\\/\\/)" + // Protocol
-      "((([a-zA-Z0-9\\-]+)\\.)+[a-zA-Z]{2,})" + // Domain name
-      "(\\:[0-9]{1,5})?" + // Optional port
-      "(\\/.*)?$", // Optional path
-    "i"
-  );
-  return !!urlPattern.test(url);
-};
+import { isValidUrl } from "../../utils/validators";
 
 const UrlForm: React.FC = () => {
   const [longUrl, setLongUrl] = useState<string>("");
-  const [localError, setLocalError] = useState<string | null>(null); // Local error for invalid input
+  const [customName, setCustomName] = useState<string>("");
+  const [showQrCode, setShowQrCode] = useState<boolean>(false);
+
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [customNameError, setCustomNameError] = useState<string | null>(null);
 
   const dispatch = useDispatch<AppDispatch>();
-  const { shortUrl, isLoading, error } = useSelector(
-    (state: RootState) => state.url
-  );
+  const { shortUrl, isLoading } = useSelector((state: RootState) => state.url);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError(null); // Clear previous local errors
+    setLocalError(null);
+    setCustomNameError(null);
 
     if (!longUrl.trim()) {
       setLocalError("The URL cannot be empty.");
@@ -45,18 +37,31 @@ const UrlForm: React.FC = () => {
 
     dispatch(startLoading());
     try {
-      const shortenedUrl = await shortenUrl(longUrl);
+      const shortenedUrl = await shortenUrl(longUrl, customName);
       dispatch(setShortUrl(shortenedUrl));
     } catch (err: any) {
-      dispatch(setError(err.response?.data?.message || "Something went wrong"));
+      if (
+        err.response?.data?.message === "This custom name is already taken."
+      ) {
+        dispatch(setError(err.response?.data?.message));
+        setCustomNameError(
+          "This custom name is already taken. Please try another."
+        );
+      } else {
+        dispatch(
+          setError(err.response?.data?.message || "Something went wrong")
+        );
+      }
     }
   };
 
   const handleClear = () => {
     setLongUrl("");
+    setCustomName("");
+    setCustomNameError("");
     setLocalError(null);
-    dispatch(setShortUrl("")); // Clear the Redux state for the short URL
-    dispatch(setError(null)); // Clear the Redux state for error
+    dispatch(setShortUrl(""));
+    dispatch(setError(null));
   };
 
   return (
@@ -82,6 +87,18 @@ const UrlForm: React.FC = () => {
             } focus:ring-2 focus:ring-[#bf43f5]`}
           />
           {localError && <p className="text-red-500 text-sm">{localError}</p>}
+          <input
+            type="text"
+            placeholder="Custom short name (optional)"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            className={`p-3 border rounded focus:outline-none ${
+              customNameError ? "border-red-500" : "border-gray-300"
+            } focus:ring-2 focus:ring-[#bf43f5]`}
+          />
+          {customNameError && (
+            <p className="text-red-500 text-sm">{customNameError}</p>
+          )}
           <div className="flex justify-between gap-2">
             <button
               type="submit"
@@ -100,27 +117,35 @@ const UrlForm: React.FC = () => {
           </div>
         </form>
         {shortUrl && (
-          <p className="mt-4 text-gray-800">
-            Shortened URL:{" "}
-            <a
-              href={shortUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 underline"
+          <>
+            <p className="mt-4 text-gray-800">
+              Shortened URL:{" "}
+              <a
+                href={shortUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 underline"
+              >
+                {shortUrl}
+              </a>
+            </p>
+            <p
+              className="mt-2 text-blue-500 underline cursor-pointer text-sm"
+              onClick={() => setShowQrCode(!showQrCode)}
             >
-              {shortUrl}
-            </a>
-          </p>
+              {showQrCode
+                ? "Hide the QR code"
+                : "Show the QR code of the Shortened URL"}
+            </p>
+          </>
         )}
-        {shortUrl && (
-          <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-semibold text-[#bf43f5] mb-4">
-              Your QR Code
-            </h2>
-            <QRCodeCanvas value={shortUrl} size={120} />
+        {showQrCode && shortUrl && (
+          <div className="mt-6 flex items-center justify-center">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+              <QRCodeCanvas value={shortUrl} size={150} className="m-auto" />
+            </div>
           </div>
         )}
-        {error && <p className="mt-4 text-red-600 text-center">{error}</p>}
       </div>
     </div>
   );
